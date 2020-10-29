@@ -2,6 +2,24 @@ import librosa
 import soundfile as sf
 import numpy as np
 
+def coroutine(func):
+    def start(*args,**kwargs):
+        cr = func(*args,**kwargs)
+        next(cr)
+        return cr
+    return start
+
+@coroutine
+def load(sr):
+    try:
+        while True:
+            file_path = (yield)
+            print(f'Loading {file_path}', sr)
+            y, _ = librosa.load(file_path, sr=sr)
+    except GeneratorExit:
+        print("Loaded")
+
+
 def convert(file_path, name, sr):
     y, _ = librosa.load(f'{file_path}/{name}', sr=sr)
 
@@ -80,11 +98,16 @@ class Op:
 
 def main(id: uuid.UUID, sample_rate: int, op: Op):
     file_path = path.join('data', id)
+    loader = load(sample_rate)
     for (_, _d, sources) in walk(file_path):
         for src in sources:
-            print(path.abspath(path.join(file_path, src)), sample_rate)
+            loader.send(path.abspath(path.join(file_path, src)))
+            """
+            path.abspath(path.join(file_path, src)), sample_rate)path.abspath(path.join(file_path, src)), sample_rate)
             if Op.GRIFFINLIM == op:
                 convert(file_path, src, sample_rate)
+            """
+    loader.close()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
