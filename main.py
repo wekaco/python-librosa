@@ -73,14 +73,18 @@ for i in np.arange(10):
 
 import argparse
 from os import walk, path
+import uuid
 
+class Op:
+    GRIFFINLIM = 'griffinlim'
 
-def main(id, sample_rate):
+def main(id: uuid.UUID, sample_rate: int, op: Op):
     file_path = path.join('data', id)
     for (_, _d, sources) in walk(file_path):
         for src in sources:
             print(path.abspath(path.join(file_path, src)), sample_rate)
-            convert(file_path, src, sample_rate)
+            if Op.GRIFFINLIM == op:
+                convert(file_path, src, sample_rate)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -95,6 +99,10 @@ if __name__ == '__main__':
     parser.add_argument(
         '--sample_rate', type=int, required=True,
         help='sample rate of the file data and generated sound'
+    )
+    parser.add_argument(
+        '--op', type=str, required=True,
+        help='|'.join([ Op.GRIFFINLIM ])
     )
     #parser.set_defaults(**default_params)
 
