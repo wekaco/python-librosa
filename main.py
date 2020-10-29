@@ -2,8 +2,8 @@ import librosa
 import soundfile as sf
 import numpy as np
 
-def convert(file_path, name):
-    y, sr = librosa.load(f'{file_path}/{name}')
+def convert(file_path, name, sr):
+    y, _ = librosa.load(f'{file_path}/{name}', sr=sr)
 
     # Get the magnitude spectrogram
     S = np.abs(librosa.stft(y))
@@ -16,7 +16,7 @@ def convert(file_path, name):
     left_channel = y[0:min_length].reshape(min_length, 1)
     right_channel = y_inv[0:min_length].reshape(min_length, 1)
 
-    sf.write(f'{file_path}/stereo_{name}.wav', np.hstack((left_channel, right_channel)), sr)
+    sf.write(f'{file_path}/stereo_{name}', np.hstack((left_channel, right_channel)), sr)
 
 
 def convert_cqt(file_path, name):
@@ -38,12 +38,64 @@ def convert_cqt(file_path, name):
 
     sf.write(f'{file_path}/stereo_cqt_{name}.wav', np.hstack((left_channel, right_channel)), sr)
 
-file_path = 'data/916a97d9-dca1-46d9-bf4b-d08958fd0883'
+def pre_emphasis(file_path, name):
+    import matplotlib.pyplot as plt
+
+    full_path = f'{file_path}/{name}'
+    print(f'pre_emphasis: {full_path}')
+    y, sr = librosa.load(full_path)
+
+    y_filt = librosa.effects.preemphasis(y, coef=0.5)
+
+    """
+    # and plot the results for comparison
+    S_orig = librosa.amplitude_to_db(np.abs(librosa.stft(y)), ref=np.max, top_db=None)
+    S_preemph = librosa.amplitude_to_db(np.abs(librosa.stft(y_filt)), ref=np.max, top_db=None)
+    fig, ax = plt.subplots(nrows=2, sharex=True, sharey=True)
+    librosa.display.specshow(S_orig, y_axis='log', x_axis='time', ax=ax[0])
+    ax[0].set(title='Original signal')
+    ax[0].label_outer()
+    img = librosa.display.specshow(S_preemph, y_axis='log', x_axis='time', ax=ax[1])
+    ax[1].set(title='Pre-emphasized signal')
+    fig.colorbar(img, ax=ax, format="%+2.f dB")
+    """
+    write_path = f'pre_emphasis_{name}.wav'
+    sf.write(f'{file_path}/{write_path}', y_filt, sr)
+    return write_path
+
+"""
 for i in np.arange(10):
     name = f'audio1-{i}.wav'
-    print(f'convert > {name}')
+    # pre_emphasis(file_path, name)
     convert(file_path, name)
-    print(f'convert cqt > {name}')
-    convert_cqt(file_path, name)
+    # convert_cqt(file_path, name)
+"""
+
+import argparse
+from os import walk, path
 
 
+def main(id, sample_rate):
+    file_path = path.join('data', id)
+    for (_, _d, sources) in walk(file_path):
+        for src in sources:
+            print(path.abspath(path.join(file_path, src)), sample_rate)
+            convert(file_path, src, sample_rate)
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        argument_default=argparse.SUPPRESS
+    )
+
+    parser.add_argument(
+        '--id', required=True,
+        help='experiment name'
+    )
+    parser.add_argument(
+        '--sample_rate', type=int, required=True,
+        help='sample rate of the file data and generated sound'
+    )
+    #parser.set_defaults(**default_params)
+
+    main(**vars(parser.parse_args()))
