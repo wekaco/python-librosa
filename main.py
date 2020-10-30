@@ -10,84 +10,94 @@ def coroutine(func):
     return start
 
 @coroutine
-def load(sr):
+def load(sr, *targets):
     try:
+        print("Loader booted")
         while True:
             file_path = (yield)
             print(f'Loading {file_path}', sr)
             y, _ = librosa.load(file_path, sr=sr)
+            for t in targets:
+                print(t)
+                t.send(y)
     except GeneratorExit:
-        print("Loaded")
+        print("Loader shutdown")
+        for t in targets:
+            t.close()
+
+@coroutine
+def spectogram(*targets):
+    try:
+        print("Spectogram booted")
+        while True:
+            y = (yield)
+            # Get the magnitude spectrogram
+            S = np.abs(librosa.stft(y))
+            for t in targets:
+                print(t)
+                t.send(S)
+    except GeneratorExit:
+        print("Spectogram shutdown")
+        for t in targets:
+            t.close()
 
 
-def convert(file_path, name, sr):
-    y, _ = librosa.load(f'{file_path}/{name}', sr=sr)
+@coroutine
+def griffinlim(*targets):
+    try:
+        print("Griffinlim booted")
+        while True:
+            S = (yield)
+            # Invert using Griffin-Lim
+            y_inv = librosa.griffinlim(S)
+            for t in targets:
+                print(t)
+                t.send(y_inv)
+    except GeneratorExit:
+        print("Griffinlim shutdown")
+        for t in targets:
+            t.close()
 
-    # Get the magnitude spectrogram
-    S = np.abs(librosa.stft(y))
 
-    # Invert using Griffin-Lim
-    y_inv = librosa.griffinlim(S)
+@coroutine
+def merger(channels=2, *targets):
+    try:
+        print("Merger booted")
+        while True:
+            _data = []
+            for i in range(channels):
+                y = (yield)
+                print(f'- channel {i}')
+                _data.append(y)
+            
+            def _crop(c, length):
+                return c[0:length]
 
-    min_length = min([ len(i) for i in [ y, y_inv ] ])
+            min_length = min([ len(i) for i in _data ])
 
-    left_channel = y[0:min_length].reshape(min_length, 1)
-    right_channel = y_inv[0:min_length].reshape(min_length, 1)
+            y_merged = np.hstack(
+                tuple([ _crop(c, min_length).reshape(min_length, 1) for c in _data ])
+            )
+            for t in targets:
+                print(t)
+                t.send(y_merged)
+    except GeneratorExit:
+        print("Merger shutdown")
+        for t in targets:
+            t.close()
 
-    sf.write(f'{file_path}/stereo_{name}', np.hstack((left_channel, right_channel)), sr)
 
-
-def convert_cqt(file_path, name):
-    y, sr = librosa.load(f'{file_path}/{name}')
-
-    # Get the CQT magnitude, 7 octaves at 36 bins per octave
-    C = np.abs(librosa.cqt(y=y, sr=sr, bins_per_octave=36, n_bins=7*36))
-
-    # Invert using Griffin-Lim
-    y_inv = librosa.griffinlim_cqt(C, sr=sr, bins_per_octave=36)
-
-    # And invert without estimating phase
-    y_icqt = librosa.icqt(C, sr=sr, bins_per_octave=36)
-
-    min_length = min([ len(i) for i in [ y, y_inv ] ])
-
-    left_channel = y_icqt[0:min_length].reshape(min_length, 1)
-    right_channel = y_inv[0:min_length].reshape(min_length, 1)
-
-    sf.write(f'{file_path}/stereo_cqt_{name}.wav', np.hstack((left_channel, right_channel)), sr)
-
-def pre_emphasis(file_path, name):
-    import matplotlib.pyplot as plt
-
-    full_path = f'{file_path}/{name}'
-    print(f'pre_emphasis: {full_path}')
-    y, sr = librosa.load(full_path)
-
-    y_filt = librosa.effects.preemphasis(y, coef=0.5)
-
-    """
-    # and plot the results for comparison
-    S_orig = librosa.amplitude_to_db(np.abs(librosa.stft(y)), ref=np.max, top_db=None)
-    S_preemph = librosa.amplitude_to_db(np.abs(librosa.stft(y_filt)), ref=np.max, top_db=None)
-    fig, ax = plt.subplots(nrows=2, sharex=True, sharey=True)
-    librosa.display.specshow(S_orig, y_axis='log', x_axis='time', ax=ax[0])
-    ax[0].set(title='Original signal')
-    ax[0].label_outer()
-    img = librosa.display.specshow(S_preemph, y_axis='log', x_axis='time', ax=ax[1])
-    ax[1].set(title='Pre-emphasized signal')
-    fig.colorbar(img, ax=ax, format="%+2.f dB")
-    """
-    write_path = f'pre_emphasis_{name}.wav'
-    sf.write(f'{file_path}/{write_path}', y_filt, sr)
-    return write_path
-
-"""
-for i in np.arange(10):
-    name = f'audio1-{i}.wav'
-    # pre_emphasis(file_path, name)
-    convert(file_path, name)
-    # convert_cqt(file_path, name)
-"""
+@coroutine
+def write(file_path, sr):
+    try:
+        print("Writer booted")
+        i = 0
+        while True:
+            y = (yield)
+            sf.write('{}_{}.wav'.format(file_path, i),  y, sr)
+            i = i + 1
+    except GeneratorExit:
+        print("Writer shutdown")
 
 import argparse
 from os import walk, path
@@ -97,17 +107,23 @@ class Op:
     GRIFFINLIM = 'griffinlim'
 
 def main(id: uuid.UUID, sample_rate: int, op: Op):
-    file_path = path.join('data', id)
-    loader = load(sample_rate)
-    for (_, _d, sources) in walk(file_path):
+    assert Op.GRIFFINLIM == op
+
+    in_path = path.join('data', id)
+    out_path = path.join('data', id, '{}_output'.format(op))
+
+    output_merger = merger(2, write(out_path, sample_rate))
+    loader = load(sample_rate,
+        spectogram(
+            griffinlim(output_merger)
+        ),
+        output_merger
+    )
+    
+    for (_, _d, sources) in walk(in_path):
         for src in sources:
-            loader.send(path.abspath(path.join(file_path, src)))
-            """
-            path.abspath(path.join(file_path, src)), sample_rate)path.abspath(path.join(file_path, src)), sample_rate)
-            if Op.GRIFFINLIM == op:
-                convert(file_path, src, sample_rate)
-            """
-    loader.close()
+            loader.send(path.abspath(path.join(in_path, src)))
+        loader.close()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
