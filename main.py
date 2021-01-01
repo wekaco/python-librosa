@@ -1,3 +1,5 @@
+from enum import Enum
+
 import librosa
 import soundfile as sf
 import numpy as np
@@ -174,13 +176,13 @@ import argparse
 from os import walk, path
 import uuid
 
-class Op:
+class Op(Enum):
     GRIFFINLIM = 'griffinlim'
     HPSS = 'hpss'
 
 
 def main(id: uuid.UUID, sample_rate: int, op: Op):
-    assert op in [ Op.GRIFFINLIM, Op.HPSS ]
+    op = Op(op)
 
     def _griffinlim(abspath, filename, sample_rate):
         out_path = path.join(abspath, f'griffinlim_{filename}')
@@ -217,8 +219,6 @@ def main(id: uuid.UUID, sample_rate: int, op: Op):
             write(out_path, sample_rate)
         )
         _targets.append(_out_perc)
-
-        
         return _targets
 
     in_path = path.join('data', id)
@@ -250,7 +250,7 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         '--op', type=str, required=True,
-        help='|'.join([ Op.GRIFFINLIM ])
+        help='|'.join([ op.value for op in Op])
     )
     #parser.set_defaults(**default_params)
 
