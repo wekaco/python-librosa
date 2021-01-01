@@ -93,11 +93,9 @@ def channel_merger(channels=2, *targets):
 def write(file_path, sr):
     try:
         print("Writer booted")
-        i = 0
         while True:
             y = (yield)
-            sf.write('{}_{}.wav'.format(file_path, i),  y, sr)
-            i = i + 1
+            sf.write(file_path, y, sr)
     except GeneratorExit:
         print("Writer shutdown")
 
@@ -184,38 +182,36 @@ class Op:
 def main(id: uuid.UUID, sample_rate: int, op: Op):
     assert op in [ Op.GRIFFINLIM, Op.HPSS ]
 
-    in_path = path.join('data', id)
-    out_path = path.join('data', id, '{}_output'.format(op))
-
-    if op == Op.GRIFFINLIM:
+    def _griffinlim(abspath, filename, sample_rate):
+        out_path = path.join(abspath, f'griffinlim_{filename}')
         _out = write(out_path, sample_rate)
         _stereo = channel_merger(2, _out)
 
-        _chain = load(sample_rate,
+        return [
             spectogram(
                 griffinlim(_stereo)
             ),
             _stereo
-        )
+        ]
 
-    if op == Op.HPSS:
+    def _hpss(abspath, filename, sample_rate):
         _targets = []
         h_margin = 1
         p_margin = 2
 
-        out_path = path.join('data', id, f'{op}_residual_h{h_margin}_p{p_margin}')
+        out_path = path.join(abspath, f'residual_h{h_margin}_p{p_margin}_{filename}')
         _residual = subtract(write(out_path, sample_rate))
         _targets.append(_residual)
 
         _add = add(_residual)
-        out_path = path.join('data', id, f'{op}_harmonic_margin_{h_margin}')
+        out_path = path.join(abspath, f'harm{h_margin}_{filename}')
         _out_harmonic = harmonic(h_margin,
             _add,
             write(out_path, sample_rate)
         )
         _targets.append(_out_harmonic)
 
-        out_path = path.join('data', id, f'{op}_perc_margin_{p_margin}')
+        out_path = path.join(abspath, f'perc{p_margin}_{filename}')
         _out_perc = percussive(p_margin,
             _add,
             write(out_path, sample_rate)
@@ -223,12 +219,20 @@ def main(id: uuid.UUID, sample_rate: int, op: Op):
         _targets.append(_out_perc)
 
         
-        _chain = load(sample_rate, *_targets)
-    
+        return _targets
+
+    in_path = path.join('data', id)
     for (_, _d, sources) in walk(in_path):
         for src in natsorted(sources):
+            _targets = []
+            if op == Op.GRIFFINLIM:
+                _targets = _griffinlim(in_path, src, sample_rate)
+            if op == Op.HPSS:
+                _targets = _hpss(in_path, src, sample_rate)
+
+            _chain = load(sample_rate, *_targets)
             _chain.send(path.abspath(path.join(in_path, src)))
-        _chain.close()
+            _chain.close()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
