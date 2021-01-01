@@ -11,6 +11,7 @@ kiwisolver==1.2.0
 librosa==0.8.0
 llvmlite==0.34.0
 matplotlib==3.3.2
+natsort==7.0.1
 noisereduce==1.1.0
 numba==0.51.2
 numpy==1.19.2
@@ -29,3 +30,4 @@ SoundFile==0.10.3.post1
 threadpoolctl==2.1.0
 tqdm==4.50.2
 urllib3==1.25.10
+scikit-image

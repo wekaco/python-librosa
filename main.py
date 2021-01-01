@@ -2,6 +2,8 @@ import librosa
 import soundfile as sf
 import numpy as np
 
+from natsort import natsorted
+
 def coroutine(func):
     def start(*args,**kwargs):
         cr = func(*args,**kwargs)
@@ -60,9 +62,9 @@ def griffinlim(*targets):
 
 
 @coroutine
-def merger(channels=2, *targets):
+def channel_merger(channels=2, *targets):
     try:
-        print("Merger booted")
+        print("Channel Merger booted")
         while True:
             _data = []
             for i in range(channels):
@@ -82,7 +84,7 @@ def merger(channels=2, *targets):
                 print(t)
                 t.send(y_merged)
     except GeneratorExit:
-        print("Merger shutdown")
+        print("Channel Merger shutdown")
         for t in targets:
             t.close()
 
@@ -99,31 +101,88 @@ def write(file_path, sr):
     except GeneratorExit:
         print("Writer shutdown")
 
+
+@coroutine
+def harmonic(margin, *targets):
+    try:
+        print(f"Harmonic booted: margin={margin}")
+        while True:
+            y = (yield)
+            # Invert using Griffin-Lim
+            y_harm = librosa.effects.harmonic(y, margin=margin)
+            for t in targets:
+                print(t)
+                t.send(y_harm)
+    except GeneratorExit:
+        print("Harmonic shutdown")
+        for t in targets:
+            t.close()
+
+
+@coroutine
+def percussive(margin, *targets):
+    try:
+        print(f"Percussive booted: margin={margin}")
+        while True:
+            y = (yield)
+            # Invert using Griffin-Lim
+            y_perc = librosa.effects.percussive(y, margin=margin)
+            for t in targets:
+                print(t)
+                t.send(y_perc)
+    except GeneratorExit:
+        print("Percussive shutdown")
+        for t in targets:
+            t.close()
+
+
 import argparse
 from os import walk, path
 import uuid
 
 class Op:
     GRIFFINLIM = 'griffinlim'
+    HPSS = 'hpss'
+
 
 def main(id: uuid.UUID, sample_rate: int, op: Op):
-    assert Op.GRIFFINLIM == op
+    assert op in [ Op.GRIFFINLIM, Op.HPSS ]
 
     in_path = path.join('data', id)
     out_path = path.join('data', id, '{}_output'.format(op))
 
-    output_merger = merger(2, write(out_path, sample_rate))
-    loader = load(sample_rate,
-        spectogram(
-            griffinlim(output_merger)
-        ),
-        output_merger
-    )
+    if op == Op.GRIFFINLIM:
+        _out = write(out_path, sample_rate)
+        _stereo = channel_merger(2, _out)
+
+        _chain = load(sample_rate,
+            spectogram(
+                griffinlim(_stereo)
+            ),
+            _stereo
+        )
+
+    if op == Op.HPSS:
+        _targets = []
+        for margin in range(1, 4):
+            out_path = path.join('data', id, f'{op}_harmonic_margin_{margin}')
+            _out_harmonic = harmonic(margin,
+                write(out_path, sample_rate)
+            )
+            _targets.append(_out_harmonic)
+
+            out_path = path.join('data', id, f'{op}_perc_margin_{margin}')
+            _out_perc = percussive(margin,
+                write(out_path, sample_rate)
+            )
+            _targets.append(_out_perc)
+
+        _chain = load(sample_rate, *_targets)
     
     for (_, _d, sources) in walk(in_path):
-        for src in sources:
-            loader.send(path.abspath(path.join(in_path, src)))
-        loader.close()
+        for src in natsorted(sources):
+            _chain.send(path.abspath(path.join(in_path, src)))
+        _chain.close()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
