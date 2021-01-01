@@ -136,6 +136,42 @@ def percussive(margin, *targets):
             t.close()
 
 
+@coroutine
+def add(*targets):
+    try:
+        print(f"Add booted")
+        while True:
+            y = (yield)
+            x = (yield)
+            # Invert using Griffin-Lim
+            y_add = y+x
+            for t in targets:
+                print(t)
+                t.send(y_add)
+    except GeneratorExit:
+        print("Add shutdown")
+        for t in targets:
+            t.close()
+
+
+@coroutine
+def subtract(*targets):
+    try:
+        print(f"Subtract booted")
+        while True:
+            y = (yield)
+            x = (yield)
+            # Invert using Griffin-Lim
+            y_sub = y-x
+            for t in targets:
+                print(t)
+                t.send(y_sub)
+    except GeneratorExit:
+        print("Subtract shutdown")
+        for t in targets:
+            t.close()
+
+
 import argparse
 from os import walk, path
 import uuid
@@ -164,19 +200,29 @@ def main(id: uuid.UUID, sample_rate: int, op: Op):
 
     if op == Op.HPSS:
         _targets = []
-        for margin in range(1, 4):
-            out_path = path.join('data', id, f'{op}_harmonic_margin_{margin}')
-            _out_harmonic = harmonic(margin,
-                write(out_path, sample_rate)
-            )
-            _targets.append(_out_harmonic)
+        h_margin = 1
+        p_margin = 2
 
-            out_path = path.join('data', id, f'{op}_perc_margin_{margin}')
-            _out_perc = percussive(margin,
-                write(out_path, sample_rate)
-            )
-            _targets.append(_out_perc)
+        out_path = path.join('data', id, f'{op}_residual_h{h_margin}_p{p_margin}')
+        _residual = subtract(write(out_path, sample_rate))
+        _targets.append(_residual)
 
+        _add = add(_residual)
+        out_path = path.join('data', id, f'{op}_harmonic_margin_{h_margin}')
+        _out_harmonic = harmonic(h_margin,
+            _add,
+            write(out_path, sample_rate)
+        )
+        _targets.append(_out_harmonic)
+
+        out_path = path.join('data', id, f'{op}_perc_margin_{p_margin}')
+        _out_perc = percussive(p_margin,
+            _add,
+            write(out_path, sample_rate)
+        )
+        _targets.append(_out_perc)
+
+        
         _chain = load(sample_rate, *_targets)
     
     for (_, _d, sources) in walk(in_path):
