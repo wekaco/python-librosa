@@ -29,6 +29,25 @@ def load(sr, *targets):
         for t in targets:
             t.close()
 
+
+@coroutine
+def filter_stft(fmin=None, fmax=None, *targets):
+    try:
+        print("filter_stft: fmin={fmin}, fmax={fmax} booted")
+        while True:
+            S = (yield)
+            print(fmin, fmax)
+            zeros = np.zeros(S.shape)
+            zeros[fmin:fmax] = S[fmin:fmax]
+            for t in targets:
+                print(t)
+                t.send(zeros)
+    except GeneratorExit:
+        print("filter stft shutdown")
+        for t in targets:
+            t.close()
+
+
 @coroutine
 def stft(*targets):
     try:
@@ -176,8 +195,10 @@ from os import walk, path
 import uuid
 
 class Op(Enum):
+    MASTER = 'master'
     GRIFFINLIM = 'griffinlim'
     HPSS = 'hpss'
+    GRIFFINLIM_FILTER = 'griffinlim_filter'
 
 
 def main(id: uuid.UUID, sample_rate: int, op: Op):
@@ -193,6 +214,22 @@ def main(id: uuid.UUID, sample_rate: int, op: Op):
                 griffinlim(_stereo)
             ),
             _stereo
+        ]
+
+    def _griffinlim_filter(abspath, filename, sample_rate):
+        out_path = path.join(abspath, f'griffinlim_filter_{filename}')
+        _out = write(out_path, sample_rate)
+        _stereo = channel_merger(2, _out)
+
+        return [
+            stft(
+                filter_stft(20, None,
+                    griffinlim(_stereo)
+                ),
+                filter_stft(None, 20,
+                    griffinlim(_stereo)
+                )
+            ),
         ]
 
     def _hpss(abspath, filename, sample_rate):
@@ -220,14 +257,59 @@ def main(id: uuid.UUID, sample_rate: int, op: Op):
         _targets.append(_out_perc)
         return _targets
 
+    def _master(abspath, filename, sample_rate):
+        h_margin = 1
+        p_margin = 5
+        filter_value = 32
+
+        out_path = path.join(abspath, f'master_h{h_margin}_p{p_margin}_f{filter_value}_{filename}')
+        _out = write(out_path, sample_rate)
+        _stereo = channel_merger(2, _out)
+
+        _add_0 = add(_stereo)
+        _add_1 = add(_stereo)
+
+        _residual = subtract(
+            stft(
+                filter_stft(filter_value, None,
+                    griffinlim(_add_1)
+                ),
+            ),
+        )
+        _hpss = add(_residual)
+
+
+        _harmonic = harmonic(h_margin,
+            _hpss,
+            stft(
+                filter_stft(filter_value, None,
+                    griffinlim(_add_0)
+                ),
+            ),
+        )
+
+        _perc = percussive(p_margin, _hpss)
+
+        return [
+            _add_0,
+            _add_1,
+            _residual,
+            _harmonic,
+            _perc,
+        ]
+
     in_path = path.join('data', id)
     for (_, _d, sources) in walk(in_path):
         for src in natsorted(sources):
             _targets = []
             if op == Op.GRIFFINLIM:
                 _targets = _griffinlim(in_path, src, sample_rate)
+            if op == Op.GRIFFINLIM_FILTER:
+                _targets = _griffinlim_filter(in_path, src, sample_rate)
             if op == Op.HPSS:
                 _targets = _hpss(in_path, src, sample_rate)
+            if op == Op.MASTER:
+                _targets = _master(in_path, src, sample_rate)
 
             _chain = load(sample_rate, *_targets)
             _chain.send(path.abspath(path.join(in_path, src)))
