@@ -30,9 +30,9 @@ def load(sr, *targets):
             t.close()
 
 @coroutine
-def spectogram(*targets):
+def stft(*targets):
     try:
-        print("Spectogram booted")
+        print("stft booted")
         while True:
             y = (yield)
             # Get the magnitude spectrogram
@@ -41,7 +41,23 @@ def spectogram(*targets):
                 print(t)
                 t.send(S)
     except GeneratorExit:
-        print("Spectogram shutdown")
+        print("stft shutdown")
+        for t in targets:
+            t.close()
+
+
+@coroutine
+def cqt(sample_rate, *targets):
+    try:
+        print("cqt booted")
+        while True:
+            y = (yield)
+            C = np.abs(librosa.cqt(y, sr=sample_rate, bins_per_octave=36, n_bins=7*36))
+            for t in targets:
+                print(t)
+                t.send(C)
+    except GeneratorExit:
+        print("stft shutdown")
         for t in targets:
             t.close()
 
@@ -59,6 +75,23 @@ def griffinlim(*targets):
                 t.send(y_inv)
     except GeneratorExit:
         print("Griffinlim shutdown")
+        for t in targets:
+            t.close()
+
+
+@coroutine
+def griffinlim_cqt(*targets):
+    try:
+        print("Griffinlim cqt booted")
+        while True:
+            C = (yield)
+            # Invert using Griffin-Lim
+            y_inv = librosa.griffinlim_cqt(C, bins_per_octave=36)
+            for t in targets:
+                print(t)
+                t.send(y_inv)
+    except GeneratorExit:
+        print("Griffinlim sqt shutdown")
         for t in targets:
             t.close()
 
@@ -178,6 +211,7 @@ import uuid
 
 class Op(Enum):
     GRIFFINLIM = 'griffinlim'
+    GRIFFINLIM_CQT = 'griffinlim_cqt'
     HPSS = 'hpss'
 
 
@@ -190,8 +224,20 @@ def main(id: uuid.UUID, sample_rate: int, op: Op):
         _stereo = channel_merger(2, _out)
 
         return [
-            spectogram(
+            stft(
                 griffinlim(_stereo)
+            ),
+            _stereo
+        ]
+
+    def _griffinlim_cqt(abspath, filename, sample_rate):
+        out_path = path.join(abspath, f'griffinlim_cqt_{filename}')
+        _out = write(out_path, sample_rate)
+        _stereo = channel_merger(2, _out)
+
+        return [
+            cqt(sample_rate,
+                griffinlim_cqt(_stereo)
             ),
             _stereo
         ]
@@ -227,6 +273,8 @@ def main(id: uuid.UUID, sample_rate: int, op: Op):
             _targets = []
             if op == Op.GRIFFINLIM:
                 _targets = _griffinlim(in_path, src, sample_rate)
+            if op == Op.GRIFFINLIM_CQT:
+                _targets = _griffinlim_cqt(in_path, src, sample_rate)
             if op == Op.HPSS:
                 _targets = _hpss(in_path, src, sample_rate)
 
