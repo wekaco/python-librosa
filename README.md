@@ -51,3 +51,31 @@ graph LR
   residual -->|y|write_2[/Write wav/]
   perc-->|y|write_1[/Write wav/]
 ```
+
+
+## `master`
+
+[![](https://mermaid.ink/img/eyJjb2RlIjoiZ3JhcGggTFJcbmxvYWQtLT58eXxhZGRfcmF3Mlt5ICsgeF1cbiAgbG9hZC0tPnx5fHJlc2lkdWFsW3kgLSB4XVxuICBsb2FkIC0tPnx5fHBlcmNbcGVyY3Vzc2l2ZV1cbiAgbG9hZFsvTG9hZCB3YXYvXSAtLT58eXxoYXJtb25pY1toYXJtb25pY11cbiAgbG9hZC0tPnx5fGFkZF9yYXdbeSArIHhdXG4gIGdyaWZmaW5saW1fMS0tPnx4fGFkZF9yYXcyXG4gIGFkZF9yYXctLT5tZXJnZXJbQ2hhbm5lbCBtZXJnZXJdXG4gIGFkZF9yYXcyLS0-bWVyZ2VyW0NoYW5uZWwgbWVyZ2VyXVxuICBncmlmZmlubGltXzItLT58eHxhZGRfcmF3XG4gIGhhcm1vbmljIC0tPnx4fGFkZFt5ICsgeF1cbiAgaGFybW9uaWMtLT58eXxzdGZ0XzJbc3RmdF1cbiAgc3RmdF8yLS0-fFN8emVyb3NfaHAyW1plcm8gPiBmbWluXVxuICBwZXJjIC0tPnx5fGFkZFt5ICsgeF1cbiAgYWRkIC0tPiB8eHxyZXNpZHVhbFxuICByZXNpZHVhbCAtLT58eXxzdGZ0XzFbc3RmdF1cbiAgemVyb3NfaHAtLT58U3xncmlmZmlubGltXzFbZ3JpZmZpbmxpbV1cbiAgemVyb3NfaHAyLS0-fFN8Z3JpZmZpbmxpbV8yW2dyaWZmaW5saW1dXG4gIHN0ZnRfMS0tPnxTfHplcm9zX2hwW1plcm8gPiBmbWluXVxuICBtZXJnZXItLT58eXx3cml0ZVtXcml0ZSB3YXZdIiwibWVybWFpZCI6eyJ0aGVtZSI6ImRlZmF1bHQifSwidXBkYXRlRWRpdG9yIjpmYWxzZX0)](https://mermaid-js.github.io/mermaid-live-editor/#/edit/eyJjb2RlIjoiZ3JhcGggTFJcbmxvYWQtLT58eXxhZGRfcmF3Mlt5ICsgeF1cbiAgbG9hZC0tPnx5fHJlc2lkdWFsW3kgLSB4XVxuICBsb2FkIC0tPnx5fHBlcmNbcGVyY3Vzc2l2ZV1cbiAgbG9hZFsvTG9hZCB3YXYvXSAtLT58eXxoYXJtb25pY1toYXJtb25pY11cbiAgbG9hZC0tPnx5fGFkZF9yYXdbeSArIHhdXG4gIGdyaWZmaW5saW1fMS0tPnx4fGFkZF9yYXcyXG4gIGFkZF9yYXctLT5tZXJnZXJbQ2hhbm5lbCBtZXJnZXJdXG4gIGFkZF9yYXcyLS0-bWVyZ2VyW0NoYW5uZWwgbWVyZ2VyXVxuICBncmlmZmlubGltXzItLT58eHxhZGRfcmF3XG4gIGhhcm1vbmljIC0tPnx4fGFkZFt5ICsgeF1cbiAgaGFybW9uaWMtLT58eXxzdGZ0XzJbc3RmdF1cbiAgc3RmdF8yLS0-fFN8emVyb3NfaHAyW1plcm8gPiBmbWluXVxuICBwZXJjIC0tPnx5fGFkZFt5ICsgeF1cbiAgYWRkIC0tPiB8eHxyZXNpZHVhbFxuICByZXNpZHVhbCAtLT58eXxzdGZ0XzFbc3RmdF1cbiAgemVyb3NfaHAtLT58U3xncmlmZmlubGltXzFbZ3JpZmZpbmxpbV1cbiAgemVyb3NfaHAyLS0-fFN8Z3JpZmZpbmxpbV8yW2dyaWZmaW5saW1dXG4gIHN0ZnRfMS0tPnxTfHplcm9zX2hwW1plcm8gPiBmbWluXVxuICBtZXJnZXItLT58eXx3cml0ZVtXcml0ZSB3YXZdIiwibWVybWFpZCI6eyJ0aGVtZSI6ImRlZmF1bHQifSwidXBkYXRlRWRpdG9yIjpmYWxzZX0)
+
+```mermaid
+graph LR
+load-->|y|add_raw2[y + x]
+  load-->|y|residual[y - x]
+  load -->|y|perc[percussive]
+  load[/Load wav/] -->|y|harmonic[harmonic]
+  load-->|y|add_raw[y + x]
+  griffinlim_1-->|x|add_raw2
+  add_raw-->merger[Channel merger]
+  add_raw2-->merger[Channel merger]
+  griffinlim_2-->|x|add_raw
+  harmonic -->|x|add[y + x]
+  harmonic-->|y|stft_2[stft]
+  stft_2-->|S|zeros_hp2[Zero > fmin]
+  perc -->|y|add[y + x]
+  add --> |x|residual
+  residual -->|y|stft_1[stft]
+  zeros_hp-->|S|griffinlim_1[griffinlim]
+  zeros_hp2-->|S|griffinlim_2[griffinlim]
+  stft_1-->|S|zeros_hp[Zero > fmin]
+  merger-->|y|write[Write wav]
+```
