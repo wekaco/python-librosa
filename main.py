@@ -235,7 +235,7 @@ def main(id: uuid.UUID, sample_rate: int, op: Op):
     def _hpss(abspath, filename, sample_rate):
         _targets = []
         h_margin = 1
-        p_margin = 2
+        p_margin = 1
 
         out_path = path.join(abspath, f'residual_h{h_margin}_p{p_margin}_{filename}')
         _residual = subtract(write(out_path, sample_rate))
@@ -259,12 +259,16 @@ def main(id: uuid.UUID, sample_rate: int, op: Op):
 
     def _master(abspath, filename, sample_rate):
         h_margin = 1
-        p_margin = 5
+        rh_margin = 2
+        rp_margin = 2
         filter_value = 32
 
-        out_path = path.join(abspath, f'master_h{h_margin}_p{p_margin}_f{filter_value}_{filename}')
+        out_path = path.join(abspath, f'master_h{h_margin}_rh{rh_margin}_rp{rp_margin}_f{filter_value}_{filename}')
         _out = write(out_path, sample_rate)
         _stereo = channel_merger(2, _out)
+
+        out_path = path.join(abspath, f'raw_h{h_margin}_rh{rh_margin}_rp{rp_margin}_f{filter_value}_{filename}')
+        _pre = channel_merger(2, write(out_path, sample_rate))
 
         _add_0 = add(_stereo)
         _add_1 = add(_stereo)
@@ -272,7 +276,10 @@ def main(id: uuid.UUID, sample_rate: int, op: Op):
         _residual = subtract(
             stft(
                 filter_stft(filter_value, None,
-                    griffinlim(_add_1)
+                    griffinlim(
+                        _add_1,
+                        _pre,
+                    )
                 ),
             ),
         )
@@ -280,22 +287,26 @@ def main(id: uuid.UUID, sample_rate: int, op: Op):
 
 
         _harmonic = harmonic(h_margin,
-            _hpss,
             stft(
                 filter_stft(filter_value, None,
-                    griffinlim(_add_0)
+                    griffinlim(
+                        _add_0,
+                        _pre,
+                    ),
                 ),
             ),
         )
 
-        _perc = percussive(p_margin, _hpss)
+        _rharm = harmonic(rh_margin, _hpss)
+        _rperc = percussive(rp_margin, _hpss)
 
         return [
             _add_0,
             _add_1,
             _residual,
             _harmonic,
-            _perc,
+            _rperc,
+            _rharm,
         ]
 
     in_path = path.join('data', id)
